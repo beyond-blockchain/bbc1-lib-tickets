@@ -1,2 +1,2 @@
-Library for Ticket Management
+Library for General Ticket Management
 ===========================================
