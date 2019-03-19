@@ -517,7 +517,7 @@ class Store:
             self.db.exec_sql(
                 self.domain_id,
                 NAME_OF_DB,
-                'delete from token_tx_id_table where tx_id=?',
+                'delete from ticket_tx_id_table where tx_id=?',
                 tx_id
             )
         return tx
