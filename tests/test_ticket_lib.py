@@ -35,8 +35,8 @@ def setup():
     tmpclient.unregister_from_core()
 
     idPubkeyMap = id_lib.BBcIdPublickeyMap(domain_id)
-    (service_id, keypairs) = idPubkeyMap.create_user_id(num_pubkeys=1)
-    (service_id_counter, keypairs_counter) = idPubkeyMap.create_user_id(
+    service_id, keypairs = idPubkeyMap.create_user_id(num_pubkeys=1)
+    service_id_counter, keypairs_counter = idPubkeyMap.create_user_id(
             num_pubkeys=1)
 
 
@@ -319,8 +319,8 @@ def test_service():
     service = ticket_lib.BBcTicketService(domain_id, service_id, service_id,
             idPubkeyMap)
 
-    (user_a_id, keypairs_a) = idPubkeyMap.create_user_id(num_pubkeys=1)
-    (user_b_id, keypairs_b) = idPubkeyMap.create_user_id(num_pubkeys=1)
+    user_a_id, keypairs_a = idPubkeyMap.create_user_id(num_pubkeys=1)
+    user_b_id, keypairs_b = idPubkeyMap.create_user_id(num_pubkeys=1)
 
     ticket_spec_dict = {
         'description': "Denki Groove:Zepp Tokyo:S3-16:Open 1552640400",
