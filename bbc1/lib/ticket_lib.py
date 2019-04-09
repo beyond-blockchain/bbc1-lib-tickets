@@ -68,7 +68,8 @@ ST_TAKEN    = 2
 class Constants(app_support_lib.Constants):
 
     O_BIT_DIVISIBLE     = 0b0000000000000001
-    O_BIT_RELATIVE_TIME = 0b0000000000000010
+    O_BIT_TRANSFERABLE  = 0b0000000000000010
+    O_BIT_RELATIVE_TIME = 0b0000000000000100
 
     VERSION_CURRENT = 0
 
@@ -79,6 +80,7 @@ class TicketSpec:
             book_of=1,
             time_to_begin=0, time_to_end=Constants.MAX_INT64, expire_after=0,
             option_divisible=False,
+            option_transferable=True,
             option_relative_time=False,
             version=Constants.VERSION_CURRENT):
         self.version = version
@@ -170,6 +172,15 @@ class TicketSpec:
 
         if dic is not None:
             try:
+                option_transferable = dic['option_transferable']
+            except KeyError:
+                option_tranferable = False
+        if not isinstance(option_transferable, bool):
+            raise TypeError('this option must be bool')
+        self.option_transferable = option_transferable
+
+        if dic is not None:
+            try:
                 option_relative_time = dic['option_relative_time']
             except KeyError:
                 option_relative_time = False
@@ -188,6 +199,7 @@ class TicketSpec:
                     or self.time_to_end != other.time_to_end \
                     or self.expire_after != other.expire_after \
                     or self.option_divisible != other.option_divisible \
+                    or self.option_transferable != other.option_transferable \
                     or self.option_relative_time != other.option_relative_time:
                 return False
             return True
@@ -212,6 +224,7 @@ class TicketSpec:
             ptr, expire_after = bbclib_utils.get_n_byte_int(ptr, 8, data)
             ptr, v = bbclib_utils.get_n_byte_int(ptr, 2, data)
             option_divisible = v & Constants.O_BIT_DIVISIBLE != 0
+            option_transferable = v & Constants.O_BIT_TRANSFERABLE != 0
             option_relative_time = v & Constants.O_BIT_RELATIVE_TIME != 0
         except:
             raise
@@ -220,6 +233,7 @@ class TicketSpec:
                 time_to_begin=time_to_begin, time_to_end=time_to_end,
                 expire_after=expire_after,
                 option_divisible=option_divisible,
+                option_transferable=option_transferable,
                 option_relative_time=option_relative_time,
                 version=version)
 
@@ -241,13 +255,15 @@ class TicketSpec:
         options = Constants.O_BIT_NONE
         if self.option_divisible:
             options |= Constants.O_BIT_DIVISIBLE
+        if self.option_transferable:
+            options |= Constants.O_BIT_TRANSFERABLE
         if self.option_relative_time:
             options |= Constants.O_BIT_RELATIVE_TIME
         dat.extend(bbclib_utils.to_2byte(options))
         return bytes(dat)
 
 
-class TicketBody:
+class Ticket:
 
     T_TICKET    = 0b0000
     T_TICKET_ID = 0b0001
@@ -262,19 +278,31 @@ class TicketBody:
     def from_serialized_data(ptr, data):
         try:
             ptr, type = bbclib_utils.get_n_byte_int(ptr, 1, data)
-            if type == TicketBody.T_TICKET:
+            if type == Ticket.T_TICKET:
                 ticket_id = None
                 ptr, spec = TicketSpec.from_serialized_data(ptr, data)
                 ptr, time_of_origin = bbclib_utils.get_n_byte_int(ptr, 8, data)
-            elif type == TicketBody.T_TICKET_ID:
+            elif type == Ticket.T_TICKET_ID:
                 ptr, ticket_id = bbclib_utils.get_bigint(ptr, data)
                 spec = None
                 time_of_origin = None
         except:
             raise
 
-        obj = TicketBody(ticket_id, spec, time_of_origin)
+        obj = Ticket(ticket_id, spec, time_of_origin)
         return ptr, obj
+
+
+    def is_divisible(self):
+        return self.spec.option_divisible
+
+
+    def is_relative_time(self):
+        return self.spec.option_relative_time
+
+
+    def is_transferable(self):
+        return self.spec.option_transferable
 
 
     def redeem(self):
@@ -283,11 +311,11 @@ class TicketBody:
 
     def serialize(self):
         if self.ticket_id is None:
-            dat = bytearray(bbclib_utils.to_1byte(TicketBody.T_TICKET))
+            dat = bytearray(bbclib_utils.to_1byte(Ticket.T_TICKET))
             dat.extend(self.spec.serialize())
             dat.extend(bbclib_utils.to_8byte(self.time_of_origin))
         else:
-            dat = bytearray(bbclib_utils.to_1byte(TicketBody.T_TICKET_ID))
+            dat = bytearray(bbclib_utils.to_1byte(Ticket.T_TICKET_ID))
             dat.extend(bbclib_utils.to_bigint(self.ticket_id))
         return bytes(dat)
 
@@ -350,7 +378,8 @@ class Store:
         )
         if len(rows) <= 0:
             return None
-        return TicketBody.from_serialized_data(0, rows[0][0])
+        _, ticket = Ticket.from_serialized_data(0, rows[0][0])
+        return ticket
 
 
     def get_tx(self, tx_id):
@@ -392,13 +421,13 @@ class Store:
         # FIXME: check validity
         for i, event in enumerate(tx.events):
             if event.asset_group_id == self.service_id:
-                _, body = TicketBody.from_serialized_data(0,
+                _, ticket = Ticket.from_serialized_data(0,
                         event.asset.asset_body)
-                if body.ticket_id is None:
-                    body.ticket_id = event.asset.asset_id
-                    self.put_ticket(body.ticket_id, event.asset.asset_body)
+                if ticket.ticket_id is None:
+                    ticket.ticket_id = event.asset.asset_id
+                    self.put_ticket(ticket.ticket_id, event.asset.asset_body)
                 self.write_utxo(event.asset.user_id,
-                        tx.transaction_id, i, body.ticket_id, True)
+                        tx.transaction_id, i, ticket.ticket_id, True)
 
         for ref in tx.references:
             if ref.asset_group_id == self.service_id:
@@ -590,7 +619,7 @@ class BBcTicketService:
         if time_of_origin is None:
             time_of_origin = tx.timestamp
         tx.events[0].asset.add(user_id=to_user_id,
-                asset_body=TicketBody(
+                asset_body=Ticket(
                 spec=spec, time_of_origin=time_of_origin).serialize())
         ticket_id = tx.events[0].asset.asset_id
         # FIXME: check collision of ticket_id
@@ -607,14 +636,14 @@ class BBcTicketService:
                 keypair, self.idPublickeyMap)
 
 
-    def make_event(self, ref_indices, user_id, body):
+    def make_event(self, ref_indices, user_id, ticket):
         event = bbclib.BBcEvent(asset_group_id=self.service_id)
         for i in ref_indices:
             event.add(reference_index=i)
         event.add(mandatory_approver=self.service_id)
         event.add(mandatory_approver=user_id)
         event.add(asset=bbclib.BBcAsset())
-        event.asset.add(user_id=user_id, asset_body=body.serialize())
+        event.asset.add(user_id=user_id, asset_body=ticket.serialize())
         return event
 
 
@@ -644,6 +673,13 @@ class BBcTicketService:
 
     def transfer(self, from_user_id, to_user_id, ticket_id, transaction=None,
             keypair_from=None, keypair_service=None):
+
+        ticket = self.store.get_ticket(ticket_id)
+        if ticket is None:
+            raise TypeError('ticket does not exist')
+        if not ticket.is_transferable():
+            raise TypeError('ticket is not transferable')
+
         if transaction is None:
             tx = bbclib.BBcTransaction()
             base_refs = 0
@@ -657,8 +693,8 @@ class BBcTicketService:
                 transaction=tx, ref_transaction=ref_tx,
                 event_index_in_ref=index)
         tx.add(reference=ref)
-        body = TicketBody(ticket_id=ticket_id)
-        tx.add(event=self.make_event([base_refs], to_user_id, body))
+        ticket = Ticket(ticket_id=ticket_id)
+        tx.add(event=self.make_event([base_refs], to_user_id, ticket))
 
         if keypair_from is None:
             return tx
