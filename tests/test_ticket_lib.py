@@ -45,6 +45,7 @@ def test_ticket_spec():
 #   description can be any string representation of a ticket, such as,
 #   "SpecialExpress/Ticket:Nozomi 323:ShinYokohama:Kyoto:Car 9:Seat 13A"
 #   "Denki Groove 30th Anniversary Ultra Tour:Zepp Tokyo:S3-16:Open 1552640400"
+#   or dict, or just arbitrary binary.
 
     description = "Yokohama Municipal Subway Off-Peak Multiple"
     value = 270
@@ -90,13 +91,14 @@ def test_ticket_spec():
     assert spec2 == spec1 == spec
 
     ticket_spec_dict = {
-        'description': "Whatever",
+        'description': b'Whatever',
     }
 
     spec = ticket_lib.TicketSpec(ticket_spec_dict)
 
     assert not spec2 == spec
 
+    assert spec.description == b'Whatever'
     assert spec.value == 0
     assert spec.book_of == 1
     assert spec.time_to_begin == 0
@@ -104,6 +106,40 @@ def test_ticket_spec():
     assert spec.expire_after == 0
     assert spec.option_divisible == False
     assert spec.option_relative_time == False
+
+    dat = spec.serialize()
+    _, spec2 = ticket_lib.TicketSpec.from_serialized_data(0, dat)
+
+    assert spec2 == spec
+
+    description = {
+        'type':  "SpecialExpress",
+        'train': "Nozomi 41",
+        'from':  "Shin-Yokohama",
+        'to':    "Kyoto",
+        'car':   9,
+        'seat':  "13A",
+    }
+
+    ticket_spec_dict = {
+        'description': description
+    }
+
+    spec = ticket_lib.TicketSpec(ticket_spec_dict)
+
+    assert spec.description == description
+
+    spec1 = ticket_lib.TicketSpec(ticket_spec_dict)
+
+    assert spec1 == spec
+
+    dat = spec1.serialize()
+    _, spec2 = ticket_lib.TicketSpec.from_serialized_data(0, dat)
+
+    assert spec.description == spec1.description
+    assert spec1.description == spec2.description
+
+    assert spec2 == spec1 == spec
 
     ticket_spec_dict = {
         'description': 123,
@@ -276,7 +312,7 @@ def test_ticket_spec():
 
 def test_ticket():
 
-    description = "SpecialExpress:Nozomi 41:ShinYokohama:Kyoto:Car 9:Seat 13A"
+    description = b"SpecialExpress:Nozomi 41:ShinYokohama:Kyoto:Car 9:Seat 13A"
     value = 1
     unit = "person"
     book_of = 1
