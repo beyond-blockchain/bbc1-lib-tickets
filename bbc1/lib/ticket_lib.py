@@ -14,6 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+import msgpack
 import sys
 import time
 
@@ -67,6 +68,10 @@ ST_TAKEN    = 2
 
 class Constants(app_support_lib.Constants):
 
+    DESC_BINARY     = 0
+    DESC_DICTIONARY = 1
+    DESC_STRING     = 2
+
     O_BIT_DIVISIBLE     = 0b0000000000000001
     O_BIT_TRANSFERABLE  = 0b0000000000000010
     O_BIT_RELATIVE_TIME = 0b0000000000000100
@@ -87,10 +92,13 @@ class TicketSpec:
 
         if dic is not None:
             description = dic['description']
-        if not isinstance(description, str):
-            raise TypeError('description must be str')
-        string = description.encode()
-        if len(string) > Constants.MAX_INT16:
+        if isinstance(description, str):
+            raw = description.encode()
+        elif isinstance(description, dict):
+            raw = msgpack.dumps(description, encoding='utf-8')
+        else:
+            raw = description
+        if len(raw) > Constants.MAX_INT16:
             raise TypeError('description is too long')
         self.description = description
 
@@ -211,9 +219,15 @@ class TicketSpec:
     def from_serialized_data(ptr, data):
         try:
             ptr, version = bbclib_utils.get_n_byte_int(ptr, 2, data)
+            ptr, t = bbclib_utils.get_n_byte_int(ptr, 1, data)
             ptr, size = bbclib_utils.get_n_byte_int(ptr, 2, data)
             ptr, v = bbclib_utils.get_n_bytes(ptr, size, data)
-            description = v.decode()
+            if t == Constants.DESC_STRING:
+                description = v.decode()
+            elif t == Constants.DESC_DICTIONARY:
+                description = msgpack.loads(v, encoding='utf-8')
+            else:
+                description = v
             ptr, size = bbclib_utils.get_n_byte_int(ptr, 1, data)
             ptr, v = bbclib_utils.get_n_bytes(ptr, size, data)
             unit = v.decode()
@@ -240,9 +254,20 @@ class TicketSpec:
 
     def serialize(self):
         dat = bytearray(bbclib_utils.to_2byte(self.version))
-        string = self.description.encode()
-        dat.extend(bbclib_utils.to_2byte(len(string)))
-        dat.extend(string)
+        if isinstance(self.description, str):
+            dat.extend(bbclib_utils.to_1byte(Constants.DESC_STRING))
+            string = self.description.encode()
+            dat.extend(bbclib_utils.to_2byte(len(string)))
+            dat.extend(string)
+        elif isinstance(self.description, dict):
+            dat.extend(bbclib_utils.to_1byte(Constants.DESC_DICTIONARY))
+            raw = msgpack.dumps(self.description, encoding='utf-8')
+            dat.extend(bbclib_utils.to_2byte(len(raw)))
+            dat.extend(raw)
+        else:
+            dat.extend(bbclib_utils.to_1byte(Constants.DESC_BINARY))
+            dat.extend(bbclib_utils.to_2byte(len(self.description)))
+            dat.extend(self.description)
         string = self.unit.encode()
         dat.extend(bbclib_utils.to_1byte(len(string)))
         dat.extend(string)
