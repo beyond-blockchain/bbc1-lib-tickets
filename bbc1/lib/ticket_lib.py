@@ -389,25 +389,20 @@ class Store:
 
 
     def get_balance_of(self, user_id, eval_time=None):
-        """get status of ticket which user has
-
-        Return:
-            ticket_list: this contains tuple(ticket_id, state) 
-        """
         rows = self.read_utxo_list(user_id)
         if len(rows) == 0:
             return 0
-        
+
         if eval_time is None:
             eval_time = int(time.time())
-
-        ticket_list = []
+        
+        balance = 0
         for row in rows:
             ticket_id = row[IDX_TICKET_ID]
-            ticket_state = row[IDX_STATE]
-            ticket_list.append((ticket_id, ticket_state))
-        return ticket_list
-        
+            ticket = self.get_ticket(ticket_id)
+            balance += ticket.spec.value
+        return balance
+      
 
     def get_ticket(self, ticket_id):
         if self.db_online is False:
