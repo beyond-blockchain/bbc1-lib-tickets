@@ -402,6 +402,7 @@ class Store:
             ticket = self.get_ticket(ticket_id)
             balance += ticket.spec.value
         return balance
+      
 
     def get_ticket(self, ticket_id):
         if self.db_online is False:
