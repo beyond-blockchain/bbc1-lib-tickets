@@ -389,8 +389,19 @@ class Store:
 
 
     def get_balance_of(self, user_id, eval_time=None):
-        pass
+        rows = self.read_utxo_list(user_id)
+        if len(rows) == 0:
+            return 0
 
+        if eval_time is None:
+            eval_time = int(time.time())
+        
+        balance = 0
+        for row in rows:
+            ticket_id = row[IDX_TICKET_ID]
+            ticket = self.get_ticket(ticket_id)
+            balance += ticket.spec.value
+        return balance
 
     def get_ticket(self, ticket_id):
         if self.db_online is False:
