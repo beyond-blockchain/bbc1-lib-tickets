@@ -16,6 +16,7 @@ limitations under the License.
 """
 import msgpack
 import sys
+import threading
 import time
 
 sys.path.append("../../")
@@ -351,11 +352,13 @@ class Ticket:
 
 class Store:
 
+    lock = threading.Lock()
+
+
     def __init__(self, domain_id, service_id, app):
         self.domain_id = domain_id
         self.service_id = service_id
         self.app = app
-        self.db_online = True
         self.db = app_support_lib.Database()
         self.db.setup_db(domain_id, NAME_OF_DB)
         self.db.create_table_in_db(domain_id, NAME_OF_DB,
@@ -370,12 +373,9 @@ class Store:
                 'ticket_id_table',
                 ticket_id_table_definition,
                 primary_key=0, indices=[1])
-        self.independent = False
 
 
     def delete_utxo(self, tx_id, idx):
-        if self.db_online is False:
-            return None
         return self.db.exec_sql(
             self.domain_id,
             NAME_OF_DB,
@@ -393,8 +393,6 @@ class Store:
 
 
     def get_ticket(self, ticket_id):
-        if self.db_online is False:
-            return None
         rows = self.db.exec_sql(
             self.domain_id,
             NAME_OF_DB,
@@ -465,27 +463,47 @@ class Store:
 
 
     def push_tx(self, tx_id, tx):
-        if self.db_online is False:
-            return
-        self.db.exec_sql(
+
+        Store.lock.acquire()
+
+        rows = self.db.exec_sql(
             self.domain_id,
             NAME_OF_DB,
-            'insert into ticket_tx_id_table values (?, ?)',
-            tx_id,
-            bbclib.serialize(tx)
+            'select rowid from ticket_tx_id_table where tx_id=?',
+            tx_id
         )
+        if len(rows) <= 0:
+            self.db.exec_sql(
+                self.domain_id,
+                NAME_OF_DB,
+                'insert into ticket_tx_id_table values (?, ?)',
+                tx_id,
+                bbclib.serialize(tx)
+            )
+
+        Store.lock.release()
 
 
     def put_ticket(self, ticket_id, ticket):
-        if self.db_online is False:
-            return
-        self.db.exec_sql(
+
+        Store.lock.acquire()
+
+        rows = self.db.exec_sql(
             self.domain_id,
             NAME_OF_DB,
-            'insert into ticket_id_table values (?, ?)',
-            ticket_id,
-            ticket
+            'select rowid from ticket_id_table where ticket_id=?',
+            ticket_id
         )
+        if len(rows) <= 0:
+            self.db.exec_sql(
+                self.domain_id,
+                NAME_OF_DB,
+                'insert into ticket_id_table values (?, ?)',
+                ticket_id,
+                ticket
+            )
+
+        Store.lock.release()
 
 
     def read_utxo(self, user_id, ticket_id):
@@ -514,8 +532,6 @@ class Store:
 
 
     def reserve_utxo(self, tx_id, idx):
-        if self.db_online is False:
-            return None
         return self.db.exec_sql(
             self.domain_id,
             NAME_OF_DB,
@@ -532,12 +548,6 @@ class Store:
         for ref in tx.references:
             if ref.asset_group_id == self.service_id:
                 self.reserve_utxo(ref.transaction_id, ref.event_index_in_ref)
-
-    '''
-    mainly for testing purposes.
-    '''
-    def set_db_online(self, is_online=True):
-        self.db_online = is_online
 
 
     def sign(self, transaction, user_id, keypair):
@@ -556,8 +566,6 @@ class Store:
 
 
     def take_tx(self, tx_id):
-        if self.db_online is False:
-            return None
         rows = self.db.exec_sql(
             self.domain_id,
             NAME_OF_DB,
@@ -567,32 +575,36 @@ class Store:
         if len(rows) <= 0:
             return None
         tx, fmt = bbclib.deserialize(rows[0][0])
-        if self.independent:
-            self.db.exec_sql(
-                self.domain_id,
-                NAME_OF_DB,
-                'delete from ticket_tx_id_table where tx_id=?',
-                tx_id
-            )
         return tx
 
 
     def write_utxo(self, user_id, tx_id, idx, ticket_id, is_single):
-        if self.db_online is False:
-            return
-        self.db.exec_sql(
+
+        Store.lock.acquire()
+
+        rows = self.db.exec_sql(
             self.domain_id,
             NAME_OF_DB,
-            'insert into ticket_table values (?, ?, ?, ?, ?, ?, ?, ?)',
-            self.service_id,
-            user_id,
+            'select rowid from ticket_table where tx_id=? and event_idx=?',
             tx_id,
-            idx,
-            ticket_id,
-            is_single,
-            ST_FREE,
-            int(time.time())
+            idx
         )
+        if len(rows) <= 0:
+            self.db.exec_sql(
+                self.domain_id,
+                NAME_OF_DB,
+                'insert into ticket_table values (?, ?, ?, ?, ?, ?, ?, ?)',
+                self.service_id,
+                user_id,
+                tx_id,
+                idx,
+                ticket_id,
+                is_single,
+                ST_FREE,
+                int(time.time())
+            )
+
+        Store.lock.release()
 
 
 class BBcTicketService:
