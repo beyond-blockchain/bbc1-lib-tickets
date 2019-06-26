@@ -39,7 +39,7 @@ bbc1_classifiers = [
 
 setup(
     name='bbc1-lib-tickets',
-    version='0.2',
+    version='0.2.1',
     description='General Ticket library of Beyond Blockchain One',
     long_description=readme,
     url='https://github.com/beyond-blockchain',
