@@ -22,12 +22,12 @@ import time
 sys.path.append("../../")
 
 from bbc1.core import bbclib
-from bbc1.core.libs import bbclib_utils
 from bbc1.core import logger, bbc_app
 from bbc1.core.bbc_error import *
 from bbc1.core.message_key_types import KeyType
 from bbc1.core.bbc_config import DEFAULT_CORE_PORT
 from bbc1.lib import app_support_lib
+from bbclib.libs import bbclib_utils
 
 
 NAME_OF_DB = 'ticket_db'
