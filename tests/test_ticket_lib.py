@@ -9,6 +9,7 @@ from bbc1.core import bbc_app
 from bbc1.core import bbclib
 from bbc1.core.bbc_config import DEFAULT_CORE_PORT
 from bbc1.lib import id_lib, ticket_lib
+from bbc1.lib.app_support_lib import TransactionLabel
 
 domain_id = None
 service_id = None
@@ -425,21 +426,36 @@ def test_service():
 
     spec = ticket_lib.TicketSpec(ticket_spec_dict)
 
-    ticket_id, _ = service.issue(user_a_id, spec, time_of_origin=1552600000,
-            keypair=keypairs[0])
+    label_group_id = bbclib.get_new_id('label_group', include_timestamp=False)
+    label_id = TransactionLabel.create_label_id('label1', '33')
+    label = TransactionLabel(label_group_id, label_id=label_id)
+
+    ticket_id, tx = service.issue(user_a_id, spec, time_of_origin=1552600000,
+            keypair=keypairs[0], label=label)
 
     assert service.is_valid_holder(user_a_id, ticket_id)
 
-    service.transfer(user_a_id, user_b_id, ticket_id,
-            keypair_from=keypairs_a[0], keypair_service=keypairs[0])
+    assert label.get_label_id(tx) == label.label_id
+
+    label.label_id = TransactionLabel.create_label_id('label2', '3')
+
+    tx = service.transfer(user_a_id, user_b_id, ticket_id,
+            keypair_from=keypairs_a[0], keypair_service=keypairs[0],
+            label=label)
 
     assert service.is_valid_holder(user_b_id, ticket_id)
     assert not service.is_valid_holder(user_a_id, ticket_id)
 
-    service.redeem(user_b_id, ticket_id, keypair_from=keypairs_b[0],
-            keypair_service=keypairs[0])
+    assert label.get_label_id(tx) == label.label_id
+
+    label.label_id = TransactionLabel.create_label_id('label3', 'eee')
+
+    tx = service.redeem(user_b_id, ticket_id, keypair_from=keypairs_b[0],
+            keypair_service=keypairs[0], label=label)
 
     assert service.is_valid_holder(service_id, ticket_id)
+
+    assert label.get_label_id(tx) == label.label_id
 
 
 def test_transferable():
@@ -485,6 +501,8 @@ def test_transferable():
         spec = 11
 
     assert spec == 11
+
+    service.close()
 
 
 # end of tests/test_ticket_lib.py
