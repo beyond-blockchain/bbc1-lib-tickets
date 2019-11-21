@@ -27,7 +27,7 @@ from bbc1.core.bbc_error import *
 from bbc1.core.message_key_types import KeyType
 from bbc1.core.bbc_config import DEFAULT_CORE_PORT
 from bbc1.lib import app_support_lib
-from bbclib.libs import bbclib_utils
+from bbclib.libs import bbclib_binary
 
 
 NAME_OF_DB = 'ticket_db'
@@ -96,7 +96,7 @@ class TicketSpec:
         if isinstance(description, str):
             raw = description.encode()
         elif isinstance(description, dict):
-            raw = msgpack.dumps(description, encoding='utf-8')
+            raw = msgpack.dumps(description, use_bin_type=True)
         else:
             raw = description
         if len(raw) > Constants.MAX_INT16:
@@ -219,25 +219,25 @@ class TicketSpec:
     @staticmethod
     def from_serialized_data(ptr, data):
         try:
-            ptr, version = bbclib_utils.get_n_byte_int(ptr, 2, data)
-            ptr, t = bbclib_utils.get_n_byte_int(ptr, 1, data)
-            ptr, size = bbclib_utils.get_n_byte_int(ptr, 2, data)
-            ptr, v = bbclib_utils.get_n_bytes(ptr, size, data)
+            ptr, version = bbclib_binary.get_n_byte_int(ptr, 2, data)
+            ptr, t = bbclib_binary.get_n_byte_int(ptr, 1, data)
+            ptr, size = bbclib_binary.get_n_byte_int(ptr, 2, data)
+            ptr, v = bbclib_binary.get_n_bytes(ptr, size, data)
             if t == Constants.DESC_STRING:
                 description = v.decode()
             elif t == Constants.DESC_DICTIONARY:
-                description = msgpack.loads(v, encoding='utf-8')
+                description = msgpack.loads(v, raw=False)
             else:
                 description = v
-            ptr, size = bbclib_utils.get_n_byte_int(ptr, 1, data)
-            ptr, v = bbclib_utils.get_n_bytes(ptr, size, data)
+            ptr, size = bbclib_binary.get_n_byte_int(ptr, 1, data)
+            ptr, v = bbclib_binary.get_n_bytes(ptr, size, data)
             unit = v.decode()
-            ptr, value = bbclib_utils.get_n_byte_int(ptr, 8, data)
-            ptr, book_of = bbclib_utils.get_n_byte_int(ptr, 2, data)
-            ptr, time_to_begin = bbclib_utils.get_n_byte_int(ptr, 8, data)
-            ptr, time_to_end = bbclib_utils.get_n_byte_int(ptr, 8, data)
-            ptr, expire_after = bbclib_utils.get_n_byte_int(ptr, 8, data)
-            ptr, v = bbclib_utils.get_n_byte_int(ptr, 2, data)
+            ptr, value = bbclib_binary.get_n_byte_int(ptr, 8, data)
+            ptr, book_of = bbclib_binary.get_n_byte_int(ptr, 2, data)
+            ptr, time_to_begin = bbclib_binary.get_n_byte_int(ptr, 8, data)
+            ptr, time_to_end = bbclib_binary.get_n_byte_int(ptr, 8, data)
+            ptr, expire_after = bbclib_binary.get_n_byte_int(ptr, 8, data)
+            ptr, v = bbclib_binary.get_n_byte_int(ptr, 2, data)
             option_divisible = v & Constants.O_BIT_DIVISIBLE != 0
             option_transferable = v & Constants.O_BIT_TRANSFERABLE != 0
             option_relative_time = v & Constants.O_BIT_RELATIVE_TIME != 0
@@ -254,29 +254,29 @@ class TicketSpec:
 
 
     def serialize(self):
-        dat = bytearray(bbclib_utils.to_2byte(self.version))
+        dat = bytearray(bbclib_binary.to_2byte(self.version))
         if isinstance(self.description, str):
-            dat.extend(bbclib_utils.to_1byte(Constants.DESC_STRING))
+            dat.extend(bbclib_binary.to_1byte(Constants.DESC_STRING))
             string = self.description.encode()
-            dat.extend(bbclib_utils.to_2byte(len(string)))
+            dat.extend(bbclib_binary.to_2byte(len(string)))
             dat.extend(string)
         elif isinstance(self.description, dict):
-            dat.extend(bbclib_utils.to_1byte(Constants.DESC_DICTIONARY))
-            raw = msgpack.dumps(self.description, encoding='utf-8')
-            dat.extend(bbclib_utils.to_2byte(len(raw)))
+            dat.extend(bbclib_binary.to_1byte(Constants.DESC_DICTIONARY))
+            raw = msgpack.dumps(self.description, use_bin_type=True)
+            dat.extend(bbclib_binary.to_2byte(len(raw)))
             dat.extend(raw)
         else:
-            dat.extend(bbclib_utils.to_1byte(Constants.DESC_BINARY))
-            dat.extend(bbclib_utils.to_2byte(len(self.description)))
+            dat.extend(bbclib_binary.to_1byte(Constants.DESC_BINARY))
+            dat.extend(bbclib_binary.to_2byte(len(self.description)))
             dat.extend(self.description)
         string = self.unit.encode()
-        dat.extend(bbclib_utils.to_1byte(len(string)))
+        dat.extend(bbclib_binary.to_1byte(len(string)))
         dat.extend(string)
-        dat.extend(bbclib_utils.to_8byte(self.value))
-        dat.extend(bbclib_utils.to_2byte(self.book_of))
-        dat.extend(bbclib_utils.to_8byte(self.time_to_begin))
-        dat.extend(bbclib_utils.to_8byte(self.time_to_end))
-        dat.extend(bbclib_utils.to_8byte(self.expire_after))
+        dat.extend(bbclib_binary.to_8byte(self.value))
+        dat.extend(bbclib_binary.to_2byte(self.book_of))
+        dat.extend(bbclib_binary.to_8byte(self.time_to_begin))
+        dat.extend(bbclib_binary.to_8byte(self.time_to_end))
+        dat.extend(bbclib_binary.to_8byte(self.expire_after))
 
         options = Constants.O_BIT_NONE
         if self.option_divisible:
@@ -285,7 +285,7 @@ class TicketSpec:
             options |= Constants.O_BIT_TRANSFERABLE
         if self.option_relative_time:
             options |= Constants.O_BIT_RELATIVE_TIME
-        dat.extend(bbclib_utils.to_2byte(options))
+        dat.extend(bbclib_binary.to_2byte(options))
         return bytes(dat)
 
 
@@ -303,13 +303,14 @@ class Ticket:
     @staticmethod
     def from_serialized_data(ptr, data):
         try:
-            ptr, type = bbclib_utils.get_n_byte_int(ptr, 1, data)
+            ptr, type = bbclib_binary.get_n_byte_int(ptr, 1, data)
             if type == Ticket.T_TICKET:
                 ticket_id = None
                 ptr, spec = TicketSpec.from_serialized_data(ptr, data)
-                ptr, time_of_origin = bbclib_utils.get_n_byte_int(ptr, 8, data)
+                ptr, time_of_origin = bbclib_binary.get_n_byte_int(ptr,
+                        8, data)
             elif type == Ticket.T_TICKET_ID:
-                ptr, ticket_id = bbclib_utils.get_bigint(ptr, data)
+                ptr, ticket_id = bbclib_binary.get_bigint(ptr, data)
                 spec = None
                 time_of_origin = None
         except:
@@ -337,12 +338,12 @@ class Ticket:
 
     def serialize(self):
         if self.ticket_id is None:
-            dat = bytearray(bbclib_utils.to_1byte(Ticket.T_TICKET))
+            dat = bytearray(bbclib_binary.to_1byte(Ticket.T_TICKET))
             dat.extend(self.spec.serialize())
-            dat.extend(bbclib_utils.to_8byte(self.time_of_origin))
+            dat.extend(bbclib_binary.to_8byte(self.time_of_origin))
         else:
-            dat = bytearray(bbclib_utils.to_1byte(Ticket.T_TICKET_ID))
-            dat.extend(bbclib_utils.to_bigint(self.ticket_id))
+            dat = bytearray(bbclib_binary.to_1byte(Ticket.T_TICKET_ID))
+            dat.extend(bbclib_binary.to_bigint(self.ticket_id))
         return bytes(dat)
 
 
@@ -373,6 +374,10 @@ class Store:
                 'ticket_id_table',
                 ticket_id_table_definition,
                 primary_key=0, indices=[1])
+
+
+    def close(self):
+        self.db.close_db(self.domain_id, NAME_OF_DB)
 
 
     def delete_utxo(self, tx_id, idx):
@@ -554,7 +559,7 @@ class Store:
         sig = transaction.sign(
                 private_key=keypair.private_key,
                 public_key=keypair.public_key)
-        transaction.add_signature(user_id=user_id, signature=sig)
+        transaction.add_signature_object(user_id=user_id, signature=sig)
         return sig
 
 
@@ -629,6 +634,11 @@ class BBcTicketService:
         self.app.request_insert_completion_notification(self.service_id)
 
 
+    def close(self):
+        self.app.unregister_from_core()
+        self.store.close()
+
+
     def get_balance_of(self, user_id, eval_time=None):
         if eval_time is None:
             eval_time = int(time.time())
@@ -647,7 +657,8 @@ class BBcTicketService:
         return self.store.is_valid_holder(user_id, ticket_id, eval_time)
 
 
-    def issue(self, to_user_id, spec, time_of_origin=None, keypair=None):
+    def issue(self, to_user_id, spec, time_of_origin=None, keypair=None,
+            label=None):
         if self.user_id != self.service_id:
             raise RuntimeError('issuer must be the ticket service')
 
@@ -663,6 +674,10 @@ class BBcTicketService:
 
         tx.events[0].add(mandatory_approver=self.service_id)
         tx.events[0].add(mandatory_approver=to_user_id)
+
+        if label is not None:
+            tx.add(event=label.get_event())
+
         tx.add(witness=bbclib.BBcWitness())
         tx.witness.add_witness(self.service_id)
 
@@ -685,9 +700,9 @@ class BBcTicketService:
 
 
     def redeem(self, from_user_id, ticket_id, transaction=None,
-            keypair_from=None, keypair_service=None):
+            keypair_from=None, keypair_service=None, label=None):
         tx = self.transfer(from_user_id, self.service_id, ticket_id,
-                transaction, keypair_from, keypair_service)
+                transaction, keypair_from, keypair_service, label=label)
         return tx
 
 
@@ -709,7 +724,7 @@ class BBcTicketService:
 
 
     def transfer(self, from_user_id, to_user_id, ticket_id, transaction=None,
-            keypair_from=None, keypair_service=None):
+            keypair_from=None, keypair_service=None, label=None):
 
         ticket = self.store.get_ticket(ticket_id)
         if ticket is None:
@@ -733,6 +748,9 @@ class BBcTicketService:
         ticket = Ticket(ticket_id=ticket_id)
         tx.add(event=self.make_event([base_refs], to_user_id, ticket))
 
+        if label is not None:
+            tx.add(event=label.get_event())
+
         if keypair_from is None:
             return tx
 
@@ -742,7 +760,7 @@ class BBcTicketService:
             if res[KeyType.status] < ESUCCESS:
                 raise RuntimeError(res[KeyType.reason].decode())
             result = res[KeyType.result]
-            tx.add_signature(self.service_id, signature=result[2])
+            tx.add_signature_object(self.service_id, signature=result[2])
             return self.store.sign_and_insert(tx, from_user_id, keypair_from,
                     self.idPublickeyMap)
 
