@@ -299,7 +299,6 @@ class Ticket:
         self.spec = spec
         self.time_of_origin = time_of_origin
 
-
     @staticmethod
     def from_serialized_data(ptr, data):
         try:
@@ -393,9 +392,13 @@ class Store:
         )
 
 
-    def get_balance_of(self, user_id, eval_time=None):
-        pass
-
+    def get_balance_of(self, user_id, eval_time):
+        rows = self.read_utxo_list(user_id)
+        if len(rows) == 0:
+            return 0
+        ticket_dict = {row[IDX_TICKET_ID]: self.get_ticket(row[IDX_TICKET_ID]) for row in rows}
+        return ticket_dict
+      
 
     def get_ticket(self, ticket_id):
         rows = self.db.exec_sql(
